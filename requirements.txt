@@ -1,0 +1,12 @@
+streamlit>=1.28.0,<2.0.0
+joblib==1.5.3
+numpy>=1.23.0,<2.0.0
+pandas>=2.0.0,<3.0.0
+matplotlib>=3.7.0,<4.0.0
+scikit-learn==1.6.1
+shap==0.51.0
+tabpfn==6.4.1
+tabpfn-common-utils==0.2.16
+openpyxl==3.1.5
+torch>=2.0.0
+dill>=0.3.0
