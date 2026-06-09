@@ -441,6 +441,7 @@ with tab_shap:
                     artifacts["model"],
                     artifacts["preprocessor"],
                     DEFAULT_INPUT,
+                    dataset_df=artifacts.get("dataset"),
                 )
                 shap_values_ms = make_local_shap_explanation(
                     runtime_explainer,
@@ -454,8 +455,8 @@ with tab_shap:
                 )
 
             # Aggregate FT features
-            aggregated_shap_ms = create_aggregated_shap_explanation(shap_values_ms[0], raw_input_df)
-            aggregated_shap_its = create_aggregated_shap_explanation(shap_values_its[0], raw_input_df)
+            aggregated_shap_ms = create_aggregated_shap_explanation(shap_values_ms, raw_input_df)
+            aggregated_shap_its = create_aggregated_shap_explanation(shap_values_its, raw_input_df)
 
             # Calculate consistency analysis
             consistency_df = analyze_feature_consistency(

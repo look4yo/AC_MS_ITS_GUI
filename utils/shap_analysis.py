@@ -8,27 +8,47 @@ import shap
 import traceback
 
 
-def build_fallback_background(preprocessor, default_input):
+def build_fallback_background(preprocessor, default_input, dataset_df=None, n_samples=150):
     """
-    构造 background 数据（使用单个样本）
+    构造 background 数据。
+
+    优先使用真实数据集中的样本作为 SHAP background；如果数据集不可用，
+    则使用默认输入的扰动版本作为回退。
     """
     from .prediction import normalize_raw_input, transform_input
 
+    if dataset_df is not None and len(dataset_df) > 0:
+        n_samples = min(n_samples, len(dataset_df))
+        sampled = dataset_df.sample(n=n_samples, random_state=42)
+        return transform_input(preprocessor, sampled)
+
     default_raw = pd.DataFrame([default_input.copy()])
     default_raw = normalize_raw_input(default_raw)
-    bg = transform_input(preprocessor, default_raw)
+    bg_single = transform_input(preprocessor, default_raw)
 
-    # 只使用单个 background 样本以加快速度
-    return bg
+    fallback_samples = 100
+    bg_repeated = np.tile(bg_single.values, (fallback_samples, 1))
+
+    rng = np.random.default_rng(42)
+    noise = rng.normal(0, 0.05, bg_repeated.shape)
+    bg_noisy = bg_repeated + noise * np.abs(bg_repeated)
+
+    return pd.DataFrame(bg_noisy, columns=bg_single.columns)
 
 
-def get_runtime_fallback_explainer(model, preprocessor, default_input):
+def get_runtime_fallback_explainer(model, preprocessor, default_input, dataset_df=None):
     """
     运行时临时构建 SHAP explainer（快速版）
 
-    策略：使用单样本 background + 快速近似算法
+    策略：使用真实数据集中的 150 个样本作为 background；数据集不可用时，
+    使用默认输入的扰动版本回退。
     """
-    background_df = build_fallback_background(preprocessor, default_input)
+    background_df = build_fallback_background(
+        preprocessor,
+        default_input,
+        dataset_df=dataset_df,
+        n_samples=150,
+    )
 
     # 定义预测函数
     def predict_func(X):
@@ -53,9 +73,11 @@ def get_runtime_fallback_explainer(model, preprocessor, default_input):
 
         return results
 
-    # 使用 Permutation Explainer（较快）
+    # 使用 Permutation Explainer。显式设置 masker 的 max_samples=150，避免
+    # SHAP 默认把 background 截断到 100 个样本。
     try:
-        explainer = shap.explainers.Permutation(predict_func, background_df)
+        masker = shap.maskers.Independent(background_df, max_samples=len(background_df))
+        explainer = shap.explainers.Permutation(predict_func, masker)
         return explainer, "runtime_permutation"
     except Exception:
         try:
