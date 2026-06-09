@@ -5,6 +5,7 @@ pandas>=2.0.0,<3.0.0
 matplotlib>=3.7.0,<4.0.0
 scikit-learn==1.6.1
 shap==0.51.0
+tabicl
 tabpfn==6.4.1
 tabpfn-common-utils==0.2.16
 openpyxl==3.1.5
