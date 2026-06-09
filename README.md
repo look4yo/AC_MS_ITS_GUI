@@ -104,13 +104,6 @@ streamlit run app.py --server.port 8501
 3. 选择仓库和分支
 4. 自动部署
 
-## 开发路线图
-
-- [x] Phase 1: 核心功能（双目标预测 + SHAP 解释）
-- [ ] Phase 2: 配合比推荐（TOPSIS 排序）
-- [ ] Phase 3: 模型性能仪表盘
-- [ ] Phase 4: 批量预测和导出功能
-
 ## License
 
 MIT
