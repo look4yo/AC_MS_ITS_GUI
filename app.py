@@ -204,19 +204,23 @@ def load_artifacts():
     try:
         if MODEL_PATH.exists():
             info["model"] = joblib.load(MODEL_PATH)
+            # RF model contains preprocessor, extract it
+            if isinstance(info["model"], dict) and "preprocessor" in info["model"]:
+                info["preprocessor"] = info["model"]["preprocessor"]
         else:
             info["errors"]["model"] = f"Model file not found: {MODEL_PATH}"
     except Exception:
         info["errors"]["model"] = traceback.format_exc()
 
-    # Load preprocessor
-    try:
-        if PREPROCESSOR_PATH.exists():
-            info["preprocessor"] = joblib.load(PREPROCESSOR_PATH)
-        else:
-            info["errors"]["preprocessor"] = f"Preprocessor file not found: {PREPROCESSOR_PATH}"
-    except Exception:
-        info["errors"]["preprocessor"] = traceback.format_exc()
+    # Fallback: load standalone preprocessor if not extracted from model
+    if info["preprocessor"] is None:
+        try:
+            if PREPROCESSOR_PATH.exists():
+                info["preprocessor"] = joblib.load(PREPROCESSOR_PATH)
+            else:
+                info["errors"]["preprocessor"] = f"Preprocessor file not found: {PREPROCESSOR_PATH}"
+        except Exception:
+            info["errors"]["preprocessor"] = traceback.format_exc()
 
     # Load pre-trained TreeExplainers (fast SHAP computation for RF models)
     try:
