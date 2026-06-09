@@ -7,7 +7,14 @@ Features:
 - Tab 2: Dual-target SHAP interpretation + Consistency analysis
 """
 
+import os
 import warnings
+
+# Streamlit Community Cloud usually runs on CPU-only machines. Hide CUDA before
+# importing torch-backed model packages so persisted TabICL artifacts do not try
+# to restore themselves onto a GPU device.
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+
 warnings.filterwarnings("ignore")
 
 from pathlib import Path
