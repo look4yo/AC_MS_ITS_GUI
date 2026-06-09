@@ -13,7 +13,7 @@ import warnings
 # Streamlit Community Cloud usually runs on CPU-only machines. Hide CUDA before
 # importing torch-backed model packages so persisted TabICL artifacts do not try
 # to restore themselves onto a GPU device.
-os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 warnings.filterwarnings("ignore")
 
@@ -21,7 +21,6 @@ from pathlib import Path
 import traceback
 
 import joblib
-import dill
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -55,8 +54,6 @@ BASE_DIR = Path(__file__).resolve().parent
 
 MODEL_PATH = BASE_DIR / "models" / "best_model_MS_ITS.joblib"
 PREPROCESSOR_PATH = BASE_DIR / "models" / "preprocessor_MS_ITS.joblib"
-EXPLAINER_MS_PATH = BASE_DIR / "models" / "shap_explainer_MS.dill"
-EXPLAINER_ITS_PATH = BASE_DIR / "models" / "shap_explainer_ITS.dill"
 
 # 数据文件（可选）
 DATASET_PATH = BASE_DIR / "data" / "Dataset_cleaned.xlsx"
@@ -192,8 +189,6 @@ def load_artifacts():
     info = {
         "model": None,
         "preprocessor": None,
-        "explainer_ms": None,
-        "explainer_its": None,
         "dataset": None,
         "pareto": None,
         "errors": {},
@@ -217,25 +212,9 @@ def load_artifacts():
     except Exception:
         info["errors"]["preprocessor"] = traceback.format_exc()
 
-    # Load MS SHAP explainer (using dill)
-    try:
-        if EXPLAINER_MS_PATH.exists():
-            with open(EXPLAINER_MS_PATH, 'rb') as f:
-                info["explainer_ms"] = dill.load(f)
-        else:
-            info["errors"]["explainer_ms"] = f"MS explainer not found: {EXPLAINER_MS_PATH}"
-    except Exception:
-        info["errors"]["explainer_ms"] = traceback.format_exc()
-
-    # Load ITS SHAP explainer (using dill)
-    try:
-        if EXPLAINER_ITS_PATH.exists():
-            with open(EXPLAINER_ITS_PATH, 'rb') as f:
-                info["explainer_its"] = dill.load(f)
-        else:
-            info["errors"]["explainer_its"] = f"ITS explainer not found: {EXPLAINER_ITS_PATH}"
-    except Exception:
-        info["errors"]["explainer_its"] = traceback.format_exc()
+    # Do not load persisted SHAP explainers on Streamlit Cloud by default.
+    # They may contain GPU-bound TabICL objects serialized on a CUDA machine.
+    # Runtime explainers are built on demand from the CPU-loaded model instead.
 
     # Load dataset (optional, for background display)
     try:
@@ -442,101 +421,107 @@ with tab_shap:
     - ITS = {st.session_state['its_pred']:.2f} MPa
     """)
 
-    # 3. Check SHAP explainer
-    explainer_ms = artifacts.get("explainer_ms")
-    explainer_its = artifacts.get("explainer_its")
+    # 3. Button to trigger runtime SHAP computation
+    compute_shap_btn = st.button(
+        "🔍 Run SHAP Analysis",
+        key="compute_shap_button",
+        type="primary",
+        use_container_width=True
+    )
 
-    if explainer_ms is None or explainer_its is None:
-        st.error("❌ Pre-trained SHAP explainer not loaded. Please run `pretrain_shap_explainers.py`")
-        # Don't use st.stop() to allow users to view other content
-    else:
-        # 4. Button to trigger SHAP computation
-        compute_shap_btn = st.button(
-            "🔍 Run SHAP Analysis",
-            key="compute_shap_button",
-            type="primary",
-            use_container_width=True
-        )
+    if compute_shap_btn:
+        try:
+            # Compute SHAP using a runtime CPU explainer. This avoids loading
+            # persisted explainers that may be bound to a CUDA device.
+            X_input = st.session_state["X_input"]
+            raw_input_df = st.session_state["raw_input_df"]
 
-        if compute_shap_btn:
-            try:
-                # Compute SHAP
-                X_input = st.session_state["X_input"]
-                raw_input_df = st.session_state["raw_input_df"]
-
-                with st.spinner("Computing SHAP values..."):
-                    shap_values_ms = explainer_ms(X_input)
-                    shap_values_its = explainer_its(X_input)
-
-                # Aggregate FT features
-                aggregated_shap_ms = create_aggregated_shap_explanation(shap_values_ms[0], raw_input_df)
-                aggregated_shap_its = create_aggregated_shap_explanation(shap_values_its[0], raw_input_df)
-
-                # Calculate consistency analysis
-                consistency_df = analyze_feature_consistency(
-                    aggregated_shap_ms.values,
-                    aggregated_shap_its.values,
-                    aggregated_shap_ms.feature_names
+            with st.spinner("Computing SHAP values..."):
+                runtime_explainer, _ = get_runtime_fallback_explainer(
+                    artifacts["model"],
+                    artifacts["preprocessor"],
+                    DEFAULT_INPUT,
+                )
+                shap_values_ms = make_local_shap_explanation(
+                    runtime_explainer,
+                    X_input,
+                    output_index=0,
+                )
+                shap_values_its = make_local_shap_explanation(
+                    runtime_explainer,
+                    X_input,
+                    output_index=1,
                 )
 
-                # Cache to session_state
-                st.session_state["shap_computed"] = True
-                st.session_state["aggregated_shap_ms"] = aggregated_shap_ms
-                st.session_state["aggregated_shap_its"] = aggregated_shap_its
-                st.session_state["consistency_df"] = consistency_df
+            # Aggregate FT features
+            aggregated_shap_ms = create_aggregated_shap_explanation(shap_values_ms[0], raw_input_df)
+            aggregated_shap_its = create_aggregated_shap_explanation(shap_values_its[0], raw_input_df)
 
-                st.success("✅ SHAP analysis completed!")
-
-            except Exception as e:
-                st.error(f"❌ SHAP computation failed: {str(e)}")
-                with st.expander("View Error Details"):
-                    st.code(traceback.format_exc())
-
-        # 5. Display cached SHAP results
-        if st.session_state.get("shap_computed", False):
-            aggregated_shap_ms = st.session_state["aggregated_shap_ms"]
-            aggregated_shap_its = st.session_state["aggregated_shap_its"]
-            consistency_df = st.session_state["consistency_df"]
-
-            # Waterfall Plots
-            st.markdown("### 🌊 Waterfall Plots (Feature Contributions)")
-            try:
-                col_ms, col_its = st.columns(2)
-
-                with col_ms:
-                    st.markdown("**MS Contribution**")
-                    fig_ms = plot_waterfall_from_explanation(aggregated_shap_ms, max_display=10)
-                    st.pyplot(fig_ms, use_container_width=True)
-
-                with col_its:
-                    st.markdown("**ITS Contribution**")
-                    fig_its = plot_waterfall_from_explanation(aggregated_shap_its, max_display=10)
-                    st.pyplot(fig_its, use_container_width=True)
-
-            except Exception as e:
-                st.error(f"❌ Waterfall plots rendering failed: {str(e)}")
-                with st.expander("View Error Details"):
-                    st.code(traceback.format_exc())
-
-            # Feature Consistency Analysis
-            st.markdown("### 🔍 Feature Consistency Analysis")
-            st.markdown("Analyze whether features have consistent effects on MS and ITS:")
-
-            st.dataframe(
-                consistency_df[['Feature', 'MS_SHAP', 'ITS_SHAP', 'Consistency']],
-                use_container_width=True,
-                hide_index=True
+            # Calculate consistency analysis
+            consistency_df = analyze_feature_consistency(
+                aggregated_shap_ms.values,
+                aggregated_shap_its.values,
+                aggregated_shap_ms.feature_names
             )
 
-            st.markdown("""
-            **Legend:**
-            - ✅ **Aligned**: Feature has consistent effects on both targets (both increase or both decrease)
-            - ⚠️ **Opposite**: Feature has opposite effects on the two targets (one increases, one decreases)
-            - ⚪ **Neutral**: Feature has minimal impact on both targets
-            """)
+            # Cache to session_state
+            st.session_state["shap_computed"] = True
+            st.session_state["aggregated_shap_ms"] = aggregated_shap_ms
+            st.session_state["aggregated_shap_its"] = aggregated_shap_its
+            st.session_state["consistency_df"] = consistency_df
 
-        else:
-            st.info("👆 Click the **Run SHAP Analysis** button to start analysis.")
+            st.success("✅ SHAP analysis completed!")
+
+        except Exception as e:
+            st.error(f"❌ SHAP computation failed: {str(e)}")
+            with st.expander("View Error Details"):
+                st.code(traceback.format_exc())
+
+    # 4. Display cached SHAP results
+    if st.session_state.get("shap_computed", False):
+        aggregated_shap_ms = st.session_state["aggregated_shap_ms"]
+        aggregated_shap_its = st.session_state["aggregated_shap_its"]
+        consistency_df = st.session_state["consistency_df"]
+
+        # Waterfall Plots
+        st.markdown("### 🌊 Waterfall Plots (Feature Contributions)")
+        try:
+            col_ms, col_its = st.columns(2)
+
+            with col_ms:
+                st.markdown("**MS Contribution**")
+                fig_ms = plot_waterfall_from_explanation(aggregated_shap_ms, max_display=10)
+                st.pyplot(fig_ms, use_container_width=True)
+
+            with col_its:
+                st.markdown("**ITS Contribution**")
+                fig_its = plot_waterfall_from_explanation(aggregated_shap_its, max_display=10)
+                st.pyplot(fig_its, use_container_width=True)
+
+        except Exception as e:
+            st.error(f"❌ Waterfall plots rendering failed: {str(e)}")
+            with st.expander("View Error Details"):
+                st.code(traceback.format_exc())
+
+        # Feature Consistency Analysis
+        st.markdown("### 🔍 Feature Consistency Analysis")
+        st.markdown("Analyze whether features have consistent effects on MS and ITS:")
+
+        st.dataframe(
+            consistency_df[['Feature', 'MS_SHAP', 'ITS_SHAP', 'Consistency']],
+            use_container_width=True,
+            hide_index=True
+        )
+
+        st.markdown("""
+        **Legend:**
+        - ✅ **Aligned**: Feature has consistent effects on both targets (both increase or both decrease)
+        - ⚠️ **Opposite**: Feature has opposite effects on the two targets (one increases, one decreases)
+        - ⚪ **Neutral**: Feature has minimal impact on both targets
+        """)
+
+    else:
+        st.info("👆 Click the **Run SHAP Analysis** button to start analysis.")
 
 # ============================================================
 # Footer
