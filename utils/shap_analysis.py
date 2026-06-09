@@ -40,41 +40,49 @@ def get_runtime_fallback_explainer(model, preprocessor, default_input, dataset_d
     """
     运行时临时构建 SHAP explainer（快速版）
 
-    策略：使用真实数据集中的 150 个样本作为 background；数据集不可用时，
+    策略：使用真实数据集中的 50 个样本作为 background；数据集不可用时，
     使用默认输入的扰动版本回退。
     """
     background_df = build_fallback_background(
         preprocessor,
         default_input,
         dataset_df=dataset_df,
-        n_samples=150,
+        n_samples=50,
     )
 
     # 定义预测函数
     def predict_func(X):
         """
         批量预测，返回 shape: (n_samples, 2)
-        """
-        from .prediction import predict_ms_its
 
+        优化：使用 TabICL 原生批量推理，避免逐行循环
+        """
         if isinstance(X, np.ndarray):
             X_df = pd.DataFrame(X, columns=background_df.columns)
         else:
             X_df = X
 
+        # 批量推理
+        if isinstance(model, dict) and 'models' in model:
+            ms_model = model['models']['MS']
+            its_model = model['models']['ITS']
+            ms_preds = ms_model.predict(X_df).flatten()
+            its_preds = its_model.predict(X_df).flatten()
+            return np.column_stack([ms_preds, its_preds])
+
+        # 回退：逐行推理
+        from .prediction import predict_ms_its
         n_samples = len(X_df)
         results = np.zeros((n_samples, 2))
-
         for i in range(n_samples):
             row_df = X_df.iloc[[i]]
             ms_pred, its_pred = predict_ms_its(model, row_df)
             results[i, 0] = ms_pred
             results[i, 1] = its_pred
-
         return results
 
-    # 使用 Permutation Explainer。显式设置 masker 的 max_samples=150，避免
-    # SHAP 默认把 background 截断到 100 个样本。
+    # 使用 Permutation Explainer。显式设置 masker 的 max_samples=50，避免
+    # SHAP 默认把 background 截断到更少样本。
     try:
         masker = shap.maskers.Independent(background_df, max_samples=len(background_df))
         explainer = shap.explainers.Permutation(predict_func, masker)
