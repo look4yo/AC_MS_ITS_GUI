@@ -32,8 +32,6 @@ from utils.prediction import (
     get_ft_options_from_preprocessor,
 )
 from utils.shap_analysis import (
-    get_runtime_fallback_explainer,
-    make_local_shap_explanation,
     plot_waterfall_from_explanation,
     analyze_feature_consistency,
 )
@@ -52,8 +50,12 @@ configure_matplotlib()
 # ============================================================
 BASE_DIR = Path(__file__).resolve().parent
 
-MODEL_PATH = BASE_DIR / "models" / "best_model_MS_ITS.joblib"
+MODEL_PATH = BASE_DIR / "models" / "best_model_MS_ITS_RF.joblib"
 PREPROCESSOR_PATH = BASE_DIR / "models" / "preprocessor_MS_ITS.joblib"
+
+# SHAP explainer paths (预训练的 TreeExplainer)
+SHAP_EXPLAINER_MS_PATH = BASE_DIR / "models" / "shap_explainer_MS_RF.pkl"
+SHAP_EXPLAINER_ITS_PATH = BASE_DIR / "models" / "shap_explainer_ITS_RF.pkl"
 
 # 数据文件（可选）
 DATASET_PATH = BASE_DIR / "data" / "Dataset_cleaned.xlsx"
@@ -185,12 +187,16 @@ st.markdown(
 # ============================================================
 @st.cache_resource(show_spinner=False)
 def load_artifacts():
-    """Load model, preprocessor, and SHAP explainers"""
+    """Load model, preprocessor, dataset, and pre-trained TreeExplainers"""
+    import pickle
+
     info = {
         "model": None,
         "preprocessor": None,
         "dataset": None,
         "pareto": None,
+        "shap_explainer_ms": None,
+        "shap_explainer_its": None,
         "errors": {},
     }
 
@@ -212,9 +218,24 @@ def load_artifacts():
     except Exception:
         info["errors"]["preprocessor"] = traceback.format_exc()
 
-    # Do not load persisted SHAP explainers on Streamlit Cloud by default.
-    # They may contain GPU-bound TabICL objects serialized on a CUDA machine.
-    # Runtime explainers are built on demand from the CPU-loaded model instead.
+    # Load pre-trained TreeExplainers (fast SHAP computation for RF models)
+    try:
+        if SHAP_EXPLAINER_MS_PATH.exists():
+            with open(SHAP_EXPLAINER_MS_PATH, "rb") as f:
+                info["shap_explainer_ms"] = pickle.load(f)
+        else:
+            info["errors"]["shap_ms"] = f"SHAP explainer MS not found: {SHAP_EXPLAINER_MS_PATH}"
+    except Exception:
+        info["errors"]["shap_ms"] = traceback.format_exc()
+
+    try:
+        if SHAP_EXPLAINER_ITS_PATH.exists():
+            with open(SHAP_EXPLAINER_ITS_PATH, "rb") as f:
+                info["shap_explainer_its"] = pickle.load(f)
+        else:
+            info["errors"]["shap_its"] = f"SHAP explainer ITS not found: {SHAP_EXPLAINER_ITS_PATH}"
+    except Exception:
+        info["errors"]["shap_its"] = traceback.format_exc()
 
     # Load dataset (optional, for background display)
     try:
@@ -431,28 +452,21 @@ with tab_shap:
 
     if compute_shap_btn:
         try:
-            # Compute SHAP using a runtime CPU explainer. This avoids loading
-            # persisted explainers that may be bound to a CUDA device.
+            # Use pre-trained TreeExplainers for instant SHAP computation
             X_input = st.session_state["X_input"]
             raw_input_df = st.session_state["raw_input_df"]
 
-            with st.spinner("Computing SHAP values..."):
-                runtime_explainer, _ = get_runtime_fallback_explainer(
-                    artifacts["model"],
-                    artifacts["preprocessor"],
-                    DEFAULT_INPUT,
-                    dataset_df=artifacts.get("dataset"),
-                )
-                shap_values_ms = make_local_shap_explanation(
-                    runtime_explainer,
-                    X_input,
-                    output_index=0,
-                )
-                shap_values_its = make_local_shap_explanation(
-                    runtime_explainer,
-                    X_input,
-                    output_index=1,
-                )
+            explainer_ms = artifacts.get("shap_explainer_ms")
+            explainer_its = artifacts.get("shap_explainer_its")
+
+            if explainer_ms is None or explainer_its is None:
+                st.error("❌ SHAP explainers not loaded. Please check model artifacts.")
+                st.stop()
+
+            with st.spinner("Computing SHAP values with TreeExplainer..."):
+                # TreeExplainer: instant computation (< 1 second)
+                shap_values_ms = explainer_ms(X_input)
+                shap_values_its = explainer_its(X_input)
 
             # Aggregate FT features
             aggregated_shap_ms = create_aggregated_shap_explanation(shap_values_ms, raw_input_df)
