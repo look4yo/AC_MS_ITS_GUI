@@ -21,7 +21,7 @@ def plot_ms_its_tradeoff(ms_pred, its_pred, dataset_df=None, pareto_df=None):
         matplotlib figure
     """
     plt.close("all")
-    fig, ax = plt.subplots(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(10, 4.5))  # 优化尺寸：宽度增加，高度减小
 
     # 背景样本分布
     if dataset_df is not None and 'MS' in dataset_df.columns and 'ITS' in dataset_df.columns:
