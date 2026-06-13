@@ -414,10 +414,12 @@ with tab_pred:
                 dataset_df=artifacts["dataset"],
                 pareto_df=artifacts["pareto"]
             )
-            # 使用 HTML 居中显示图表，保持原始比例
-            st.markdown('<div style="display: flex; justify-content: center;">', unsafe_allow_html=True)
+            # 使用居中容器
+            st.markdown(
+                '<style>div[data-testid="stImage"] { display: flex; justify-content: center; }</style>',
+                unsafe_allow_html=True
+            )
             st.pyplot(fig, use_container_width=False)
-            st.markdown('</div>', unsafe_allow_html=True)
         except Exception as e:
             st.warning(f"⚠️ Trade-off plot failed: {str(e)}")
 
