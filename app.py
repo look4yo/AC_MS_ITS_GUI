@@ -414,10 +414,10 @@ with tab_pred:
                 dataset_df=artifacts["dataset"],
                 pareto_df=artifacts["pareto"]
             )
-            # 使用列布局居中显示图表
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                st.pyplot(fig, use_container_width=False)
+            # 使用 HTML 居中显示图表，保持原始比例
+            st.markdown('<div style="display: flex; justify-content: center;">', unsafe_allow_html=True)
+            st.pyplot(fig, use_container_width=False)
+            st.markdown('</div>', unsafe_allow_html=True)
         except Exception as e:
             st.warning(f"⚠️ Trade-off plot failed: {str(e)}")
 
