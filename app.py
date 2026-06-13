@@ -414,7 +414,10 @@ with tab_pred:
                 dataset_df=artifacts["dataset"],
                 pareto_df=artifacts["pareto"]
             )
-            st.pyplot(fig, use_container_width=True)
+            # 使用列布局居中显示图表
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                st.pyplot(fig, use_container_width=False)
         except Exception as e:
             st.warning(f"⚠️ Trade-off plot failed: {str(e)}")
 
@@ -503,7 +506,7 @@ with tab_shap:
         consistency_df = st.session_state["consistency_df"]
 
         # Waterfall Plots
-        st.markdown("### 🌊 Waterfall Plots (Feature Contributions)")
+        st.markdown("### 📊 Waterfall Plots (Feature Contributions)")
         try:
             col_ms, col_its = st.columns(2)
 

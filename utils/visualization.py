@@ -21,7 +21,7 @@ def plot_ms_its_tradeoff(ms_pred, its_pred, dataset_df=None, pareto_df=None):
         matplotlib figure
     """
     plt.close("all")
-    fig, ax = plt.subplots(figsize=(10, 4.5))  # 优化尺寸：宽度增加，高度减小
+    fig, ax = plt.subplots(figsize=(5, 3.75))  # 保持 4:3 比例，紧凑尺寸
 
     # 背景样本分布
     if dataset_df is not None and 'MS' in dataset_df.columns and 'ITS' in dataset_df.columns:
@@ -36,23 +36,23 @@ def plot_ms_its_tradeoff(ms_pred, its_pred, dataset_df=None, pareto_df=None):
         ax.scatter(pareto_sorted['MS'], pareto_sorted['ITS'],
                    s=60, c='blue', alpha=0.5, zorder=5)
 
-    # 当前预测点（红星）
-    ax.scatter(ms_pred, its_pred, s=400, c='red',
-               marker='*', edgecolors='black', linewidths=2.5,
+    # 当前预测点（红星）- 缩小标记
+    ax.scatter(ms_pred, its_pred, s=250, c='red',
+               marker='*', edgecolors='black', linewidths=1.5,
                label='Current Prediction', zorder=10)
 
-    # 在预测点旁边标注数值
+    # 在预测点旁边标注数值 - 缩小字体
     ax.annotate(f'MS={ms_pred:.2f}\nITS={its_pred:.2f}',
                 xy=(ms_pred, its_pred),
-                xytext=(10, 10), textcoords='offset points',
-                fontsize=10, fontweight='bold',
-                bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.7),
+                xytext=(8, 8), textcoords='offset points',
+                fontsize=7, fontweight='bold',
+                bbox=dict(boxstyle='round,pad=0.4', facecolor='yellow', alpha=0.7),
                 arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=0'))
 
-    ax.set_xlabel('Marshall Stability (kN)', fontsize=13, fontweight='bold')
-    ax.set_ylabel('Indirect Tensile Strength (MPa)', fontsize=13, fontweight='bold')
-    ax.set_title('MS vs ITS Performance Trade-off', fontsize=14, fontweight='bold')
-    ax.legend(loc='best', fontsize=10)
+    ax.set_xlabel('Marshall Stability (kN)', fontsize=9, fontweight='bold')
+    ax.set_ylabel('Indirect Tensile Strength (MPa)', fontsize=9, fontweight='bold')
+    ax.set_title('MS vs ITS Performance Trade-off', fontsize=10, fontweight='bold')
+    ax.legend(loc='best', fontsize=7)
     ax.grid(alpha=0.3, linestyle='--')
     plt.tight_layout()
 
