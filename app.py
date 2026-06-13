@@ -414,12 +414,11 @@ with tab_pred:
                 dataset_df=artifacts["dataset"],
                 pareto_df=artifacts["pareto"]
             )
-            # 使用居中容器
-            st.markdown(
-                '<style>div[data-testid="stImage"] { display: flex; justify-content: center; }</style>',
-                unsafe_allow_html=True
-            )
-            st.pyplot(fig, use_container_width=False)
+            # 使用容器居中
+            with st.container():
+                col1, col2, col3 = st.columns([1, 3, 1])
+                with col2:
+                    st.pyplot(fig, use_container_width=False)
         except Exception as e:
             st.warning(f"⚠️ Trade-off plot failed: {str(e)}")
 
