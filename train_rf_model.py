@@ -1,29 +1,28 @@
 """
 训练 Random Forest 双目标模型用于 AC_MS_ITS_GUI
 
-使用主项目中 Optuna 调优的 RF 超参数，在全量数据集上训练。
+使用当前 389 样本 MC50 方案指定的 RF 超参数，在全量数据集上训练。
 输出：models/best_model_MS_ITS_RF.joblib
 """
-import sys
+import argparse
+import hashlib
+import json
 from pathlib import Path
 import pandas as pd
-import numpy as np
 import joblib
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error, mean_absolute_percentage_error
 
-# Optuna-tuned hyperparameters from main project
+# 当前 GUI 基座模型参数：与 revision_dataset389_table4params_randomcv_20260724 一致。
 RF_PARAMS = {
-    "n_estimators": 194,
-    "max_depth": 28,
+    "n_estimators": 175,
+    "max_depth": 19,
     "min_samples_split": 2,
     "min_samples_leaf": 1,
-    "max_features": 1.0,
+    "max_features": "sqrt",
     "bootstrap": True,
     "random_state": 42,
     "n_jobs": -1,
@@ -61,11 +60,32 @@ def make_preprocessor():
         remainder="drop",
     )
 
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--params-json", default=None, help="selected_model_params.json exported by the current Optuna run")
+    parser.add_argument("--data-path", default=None, help="Dataset workbook to train from; defaults to GUI data/Dataset_cleaned.xlsx.")
+    parser.add_argument("--models-dir", default=None, help="Directory for the model bundle; defaults to GUI models/.")
+    return parser.parse_args()
+
+
+def load_rf_params(params_json):
+    if not params_json:
+        return RF_PARAMS
+    with open(params_json, "r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    try:
+        return payload["model_params"]["RF"]
+    except KeyError as exc:
+        raise ValueError("Parameter JSON does not contain model_params.RF") from exc
+
+
 def main():
+    args = parse_args()
+    rf_params = load_rf_params(args.params_json)
     base_dir = Path(__file__).parent
-    data_path = base_dir / "data" / "Dataset_cleaned.xlsx"
-    models_dir = base_dir / "models"
-    models_dir.mkdir(exist_ok=True)
+    data_path = Path(args.data_path) if args.data_path else base_dir / "data" / "Dataset_cleaned.xlsx"
+    models_dir = Path(args.models_dir) if args.models_dir else base_dir / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
 
     print("Loading dataset...")
     df = pd.read_excel(data_path)
@@ -74,37 +94,19 @@ def main():
     X = df[NUMERIC_FEATURES + CATEGORICAL_FEATURES].copy()
     y = df[TARGETS].values
 
-    # 80/20 split for validation
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
-
-    print("\nBuilding RF model...")
+    print("\nBuilding full-dataset RF model...")
     preprocessor = make_preprocessor()
+    X_prep = preprocessor.fit_transform(X)
+    print(f"  Fitted preprocessor on all {len(X)} samples")
 
     # Train separate RF for MS and ITS
     models = {}
     for idx, target in enumerate(TARGETS):
         print(f"\nTraining {target}...")
-        rf = RandomForestRegressor(**RF_PARAMS)
+        rf = RandomForestRegressor(**rf_params)
 
-        # Fit preprocessor and model
-        X_train_prep = preprocessor.fit_transform(X_train)
-        rf.fit(X_train_prep, y_train[:, idx])
-
-        # Evaluate
-        X_test_prep = preprocessor.transform(X_test)
-        y_pred = rf.predict(X_test_prep)
-
-        r2 = r2_score(y_test[:, idx], y_pred)
-        rmse = np.sqrt(mean_squared_error(y_test[:, idx], y_pred))
-        mae = mean_absolute_error(y_test[:, idx], y_pred)
-        mape = mean_absolute_percentage_error(y_test[:, idx], y_pred) * 100
-
-        print(f"  Test R2 = {r2:.4f}")
-        print(f"  Test RMSE = {rmse:.4f}")
-        print(f"  Test MAE = {mae:.4f}")
-        print(f"  Test MAPE = {mape:.2f}%")
+        rf.fit(X_prep, y[:, idx])
+        print(f"  Fitted on all {len(X)} samples")
 
         models[target] = rf
 
@@ -113,10 +115,26 @@ def main():
         "preprocessor": preprocessor,
         "models": models,
         "device": "cpu",
+        "rf_params": rf_params,
+        "dataset_sha256": hashlib.sha256(data_path.read_bytes()).hexdigest(),
+        "training_sample_count": int(len(X)),
+        "training_method": "full_dataset_refit",
     }
 
     output_path = models_dir / "best_model_MS_ITS_RF.joblib"
     joblib.dump(model_bundle, output_path)
+    (models_dir / "best_model_MS_ITS_RF_metadata.json").write_text(
+        json.dumps(
+            {
+                "dataset_sha256": model_bundle["dataset_sha256"],
+                "rf_params": rf_params,
+                "training_sample_count": model_bundle["training_sample_count"],
+                "training_method": model_bundle["training_method"],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     print(f"\nSaved RF model to: {output_path}")
     print(f"Model structure: dict with 'preprocessor', 'models' (MS/ITS), 'device'")
 

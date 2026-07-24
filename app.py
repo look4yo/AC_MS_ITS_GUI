@@ -51,7 +51,6 @@ configure_matplotlib()
 BASE_DIR = Path(__file__).resolve().parent
 
 MODEL_PATH = BASE_DIR / "models" / "best_model_MS_ITS_RF.joblib"
-PREPROCESSOR_PATH = BASE_DIR / "models" / "preprocessor_MS_ITS.joblib"
 
 # SHAP explainer paths (预训练的 TreeExplainer)
 SHAP_EXPLAINER_MS_PATH = BASE_DIR / "models" / "shap_explainer_MS_RF.pkl"
@@ -211,16 +210,6 @@ def load_artifacts():
             info["errors"]["model"] = f"Model file not found: {MODEL_PATH}"
     except Exception:
         info["errors"]["model"] = traceback.format_exc()
-
-    # Fallback: load standalone preprocessor if not extracted from model
-    if info["preprocessor"] is None:
-        try:
-            if PREPROCESSOR_PATH.exists():
-                info["preprocessor"] = joblib.load(PREPROCESSOR_PATH)
-            else:
-                info["errors"]["preprocessor"] = f"Preprocessor file not found: {PREPROCESSOR_PATH}"
-        except Exception:
-            info["errors"]["preprocessor"] = traceback.format_exc()
 
     # Load pre-trained TreeExplainers (fast SHAP computation for RF models)
     try:

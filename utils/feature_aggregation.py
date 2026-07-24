@@ -91,11 +91,22 @@ def create_aggregated_shap_explanation(shap_explanation, user_input_df):
         user_input_df
     )
 
+    # 提取原始特征数据（用于 waterfall 图显示真实特征值而非 SHAP 值）
+    original_data = shap_explanation.data
+    if original_data is not None:
+        if isinstance(original_data, np.ndarray) and original_data.ndim == 2:
+            original_data = original_data[0]
+        aggregated_data, _ = aggregate_onehot_features(
+            original_data, original_names, user_input_df
+        )
+    else:
+        aggregated_data = aggregated_values
+
     # 创建新的 SHAP Explanation 对象
     aggregated_explanation = shap.Explanation(
         values=aggregated_values,
         base_values=base_value,
-        data=aggregated_values,  # 使用 SHAP 值作为 data（简化）
+        data=aggregated_data,
         feature_names=aggregated_names
     )
 

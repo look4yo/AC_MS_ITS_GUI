@@ -1,0 +1,15 @@
+{
+  "dataset_sha256": "e9ccc43047082109a98523d7f3d1b4d949efb47a4d4be2fdbec1b3e979d42ef0",
+  "rf_params": {
+    "n_estimators": 175,
+    "max_depth": 19,
+    "min_samples_split": 2,
+    "min_samples_leaf": 1,
+    "max_features": "sqrt",
+    "bootstrap": true,
+    "random_state": 42,
+    "n_jobs": -1
+  },
+  "training_sample_count": 389,
+  "training_method": "full_dataset_refit"
+}

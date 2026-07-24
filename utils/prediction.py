@@ -9,7 +9,7 @@ def normalize_raw_input(raw_df: pd.DataFrame) -> pd.DataFrame:
     """
     标准化原始输入数据
     - 数值列转换为 float
-    - 分类列（FT）标准化为小写
+    - 分类列（FT）去除首尾空白，保留原始大小写以匹配训练时的 OneHotEncoder 类别
     """
     df = raw_df.copy()
 
@@ -22,7 +22,7 @@ def normalize_raw_input(raw_df: pd.DataFrame) -> pd.DataFrame:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
     if "FT" in df.columns:
-        df["FT"] = df["FT"].astype(str).str.strip().str.lower()
+        df["FT"] = df["FT"].astype(str).str.strip()
 
     return df
 
